@@ -80,7 +80,7 @@ func (vb *VehicleBuilder) check() (*VehicleBuilder, error) {
 		log.Error().Err(err).Msg("Failed to build vehicle.")
 		return nil, err
 	}
-	if len(vb.pathIDs) == 0 {
+	if len(vb.pathIDs) < 2 {
 		err := errors.New("path is not set")
 		log.Error().Err(err).Msg("Failed to build vehicle.")
 		return nil, err
@@ -99,6 +99,12 @@ func (vb *VehicleBuilder) check() (*VehicleBuilder, error) {
 }
 
 func (vb *VehicleBuilder) Build() (Vehicle, error) {
+	vb, err := vb.check()
+
+	if err != nil {
+		return Vehicle{}, err
+	}
+
 	vehicle := Vehicle{
 		ID:                nanoid.New(),
 		PathIDs:           vb.pathIDs,
@@ -108,6 +114,17 @@ func (vb *VehicleBuilder) Build() (Vehicle, error) {
 		PrevID:            vb.prevID,
 		IsParked:          vb.isParked,
 		DistanceRemaining: 0.0, // default value
+		g:                 vb.graph,
 	}
+
+	// ensure nextID is set
+	id := vehicle.getNextID()
+	if id == 0 {
+		vehicle.IsParked = true
+		vehicle.NextID = 0
+	} else {
+		vehicle.NextID = id
+	}
+
 	return vehicle, nil
 }

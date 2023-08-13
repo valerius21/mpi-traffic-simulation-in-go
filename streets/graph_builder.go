@@ -77,7 +77,7 @@ func (gb *GraphBuilder) WithEdges(edges []JEdge) *GraphBuilder {
 			}
 
 			// Create a new map
-			hMap := utils.NewMap[string, *OVehicle]()
+			hMap := utils.NewMap[string, *Vehicle]()
 
 			// Add the Data struct to the edge
 			e.Data.Map = &hMap

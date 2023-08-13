@@ -8,8 +8,8 @@ func UnmarshalVehicle(data []byte) (Vehicle, error) {
 	return r, err
 }
 
-func (r *Vehicle) Marshal() ([]byte, error) {
-	return json.Marshal(r)
+func (v *Vehicle) Marshal() ([]byte, error) {
+	return json.Marshal(v)
 }
 
 type Vehicle struct {
@@ -21,4 +21,5 @@ type Vehicle struct {
 	PrevID            int     `json:"prev_id"`
 	IsParked          bool    `json:"is_parked"`
 	DistanceRemaining float64 `json:"distance_remaining"`
+	g                 *StreetGraph
 }

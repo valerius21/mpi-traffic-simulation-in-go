@@ -47,5 +47,5 @@ type Data struct {
 	Name     string
 	MaxSpeed float64
 	Length   float64
-	Map      *utils.HashMap[string, *OVehicle]
+	Map      *utils.HashMap[string, *Vehicle]
 }
