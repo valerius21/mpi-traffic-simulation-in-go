@@ -160,9 +160,6 @@ func (gb *GraphBuilder) SetTopRightBottomLeftVertices() *GraphBuilder {
 		Y: topY,
 	}
 
-	log.Debug().Msgf("Bottom left vertex: %v", bot)
-	log.Debug().Msgf("Top right vertex: %v", top)
-
 	gb.bot = bot
 	gb.top = top
 

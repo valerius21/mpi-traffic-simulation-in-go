@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="RemoteTargetsManager">
+    <option name="projectDefaultTargetUuid" value="bbcc6930-a9c0-47e7-b225-86d7dad62986" />
+    <targets>
+      <target name="cloud@c102-040.cloud.gwdg.de:22" type="ssh/sftp" uuid="bbcc6930-a9c0-47e7-b225-86d7dad62986">
+        <config>
+          <option name="projectRootOnTarget" value="/home/cloud/pchpc_next" />
+          <option name="serverName" value="cloud@c102-040.cloud.gwdg.de:22 password" />
+          <option name="useRsync" value="true" />
+        </config>
+        <ContributedStateBase type="GoLanguageRuntime">
+          <config>
+            <option name="goPath" value="/home/cloud/go" />
+            <option name="goRoot" value="/usr/bin/go" />
+            <option name="goVersion" value="go1.18.1 linux/amd64" />
+          </config>
+        </ContributedStateBase>
+      </target>
+    </targets>
+  </component>
+</project>

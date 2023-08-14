@@ -70,7 +70,12 @@ func (v *Vehicle) getNextID() int {
 
 	vertexExistsOnCurrentGraph := v.g.VertexExists(nextID)
 	if !vertexExistsOnCurrentGraph {
-		// TODO: implement
+		// 1. Call Root
+		// 2. Send nextID (int)
+		// 3. Root replies with Node ID
+		// 4. pack
+		// 5. delete vehicle
+		// 6. send to node.
 		err := errors.New("failed to get vertex")
 		log.Error().Err(err).Msgf("NOT IN GRAPH: Failed to get vertex %d", nextID)
 		panic(err)

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	mpi "github.com/sbromberger/gompi"
 	"os"
 	"pchpc_next/streets"
 	"strconv"
@@ -13,12 +14,12 @@ import (
 func main() {
 	// Flags
 	n := flag.Int("n", 100, "Number of vehicles")
-	useRoutines := flag.Bool("m", false, "Use goroutines")
+	//useRoutines := flag.Bool("m", false, "Use goroutines")
 	minSpeed := flag.Float64("min-speed", 5.5, "Minimum speed")
 	maxSpeed := flag.Float64("max-speed", 8.5, "Maximum speed")
 	jsonPath := flag.String("jsonPath", "assets/out.json", "Path to the json containing the graph data")
 	debug := flag.Bool("debug", false, "Enable debug mode")
-	numberOfRects := flag.Int("rects", 4, "Number of rects to divide the graph into")
+	//numberOfRects := flag.Int("rects", 4, "Number of rects to divide the graph into")
 	//useMPI := flag.Bool("mpi", false, "Use M3.1415...")
 
 	flag.Parse()
@@ -43,11 +44,75 @@ func main() {
 		return
 	}
 
-	if *useRoutines {
-		runWithGoRoutines(vehicleList)
-	} else {
-		runSequentially(vehicleList)
+	mpi.Start(false)
+	defer mpi.Stop()
+	world := mpi.NewCommunicator(nil)
+
+	//numTasks := world.Size()
+	taskID := world.Rank()
+
+	if mpi.WorldSize() < 2 {
+		log.Error().Msg("World size is less than 2")
+		return
 	}
+
+	rectangularSplits := mpi.WorldSize() - 1
+
+	if taskID == 0 {
+		size, err := rootGraph.Graph.Size()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to get size of graph")
+			return
+		}
+		log.Info().Msgf("Number of vertices: %d", size)
+	}
+
+	// Broadcast to the leafs, if one of them has the current vertex of the vehicle
+	// just send it -> (P) What if the vertex does not exist? -> Vehicle is lost...
+	// leafs will listen for incoming vehicles and add them to their graph
+	// leafs start the drive on them
+	// While true loop for constantly listening to receive bytes?
+
+	for i := 0; i < mpi.WorldSize(); i++ {
+		if i == taskID && taskID != 0 {
+			log.Info().Msgf("Task %d is the root", taskID)
+			leafGraph, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, i, taskID)
+			if !ok {
+				return
+			}
+			vehicle, err := leafGraph.AddVehicle(*minSpeed, *maxSpeed)
+			if err != nil {
+				return
+			}
+			vehicle.Drive()
+			//world.SendByte()
+		}
+	}
+
+	//
+	//if *useRoutines {
+	//	runWithGoRoutines(vehicleList)
+	//} else {
+	//	runSequentially(vehicleList)
+	//}
+}
+
+func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, bool) {
+	gb := streets.NewGraphBuilder().FromJsonFile(*jsonPath).IsLeaf(rootGraph).NumberOfRects(rectangularSplits)
+	gb = gb.PickRect(i - 1).DivideGraphsIntoRects().FilterForRect()
+	gb = gb.SetTopRightBottomLeftVertices()
+	leafGraph, err := gb.Build()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to build graph")
+		return nil, true
+	}
+	size, err := leafGraph.Graph.Size()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get size of graph")
+		return nil, true
+	}
+	log.Info().Msgf("[%d] Number of vertices: %d", taskID, size)
+	return leafGraph, false
 }
 
 func runWithGoRoutines(vehicleList []*streets.Vehicle) {

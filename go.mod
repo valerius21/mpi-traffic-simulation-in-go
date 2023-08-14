@@ -6,6 +6,7 @@ require (
 	github.com/aidarkhanov/nanoid v1.0.8
 	github.com/dominikbraun/graph v0.23.0
 	github.com/rs/zerolog v1.30.0
+	github.com/sbromberger/gompi v0.2.0
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230811145659-89c5cff77bcb
 )
