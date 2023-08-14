@@ -14,13 +14,11 @@ import (
 func main() {
 	// Flags
 	n := flag.Int("n", 100, "Number of vehicles")
-	//useRoutines := flag.Bool("m", false, "Use goroutines")
+	useRoutines := flag.Bool("m", false, "Use goroutines")
 	minSpeed := flag.Float64("min-speed", 5.5, "Minimum speed")
 	maxSpeed := flag.Float64("max-speed", 8.5, "Maximum speed")
 	jsonPath := flag.String("jsonPath", "assets/out.json", "Path to the json containing the graph data")
 	debug := flag.Bool("debug", false, "Enable debug mode")
-	//numberOfRects := flag.Int("rects", 4, "Number of rects to divide the graph into")
-	//useMPI := flag.Bool("mpi", false, "Use M3.1415...")
 
 	flag.Parse()
 
@@ -44,12 +42,21 @@ func main() {
 		return
 	}
 
+	if !mpi.IsOn() {
+		if *useRoutines {
+			runWithGoRoutines(vehicleList)
+		} else {
+			runSequentially(vehicleList)
+		}
+		return
+	}
+
 	mpi.Start(false)
 	defer mpi.Stop()
-	world := mpi.NewCommunicator(nil)
+	comm := mpi.NewCommunicator(nil)
 
 	//numTasks := world.Size()
-	taskID := world.Rank()
+	taskID := comm.Rank()
 
 	if mpi.WorldSize() < 2 {
 		log.Error().Msg("World size is less than 2")
@@ -65,36 +72,30 @@ func main() {
 			return
 		}
 		log.Info().Msgf("Number of vertices: %d", size)
-	}
-
-	// Broadcast to the leafs, if one of them has the current vertex of the vehicle
-	// just send it -> (P) What if the vertex does not exist? -> Vehicle is lost...
-	// leafs will listen for incoming vehicles and add them to their graph
-	// leafs start the drive on them
-	// While true loop for constantly listening to receive bytes?
-
-	for i := 0; i < mpi.WorldSize(); i++ {
-		if i == taskID && taskID != 0 {
-			log.Info().Msgf("Task %d is the root", taskID)
-			leafGraph, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, i, taskID)
-			if !ok {
-				return
-			}
-			vehicle, err := leafGraph.AddVehicle(*minSpeed, *maxSpeed)
+		m := streets.NewMPI(0, *comm, rootGraph)
+		for {
+			// root process will listen for incoming requests
+			err = m.RespondToEdgeLengthRequest()
 			if err != nil {
+				log.Error().Err(err).Msg("Failed to respond to edge length request")
 				return
 			}
-			vehicle.Drive()
-			//world.SendByte()
+		}
+	} else {
+		// Broadcast to the leafs, if one of them has the current vertex of the vehicle
+		// just send it -> (P) What if the vertex does not exist? -> Vehicle is lost...
+		// leafs will listen for incoming vehicles and add them to their graph
+		// leafs start the drive on them
+		// While true loop for constantly listening to receive bytes?
+
+		_ = streets.NewMPI(taskID, *comm, rootGraph)
+
+		_, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, taskID-1, taskID)
+		if !ok {
+			log.Error().Msgf("[%d] Failed to setup leaf", taskID)
+			return
 		}
 	}
-
-	//
-	//if *useRoutines {
-	//	runWithGoRoutines(vehicleList)
-	//} else {
-	//	runSequentially(vehicleList)
-	//}
 }
 
 func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, bool) {
