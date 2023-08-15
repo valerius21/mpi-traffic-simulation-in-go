@@ -15,7 +15,9 @@ func (v *Vehicle) Drive() {
 
 // Step is the main algorithm for the vehicle
 func (v *Vehicle) Step() {
+	log.Debug().Msgf("[%s] is stepping.", v.ID)
 	if v.NextID < 0 { // III.1
+		log.Debug().Msgf("[%s] is parked. (III.3)", v.ID)
 		v.IsParked = true
 	}
 
@@ -25,6 +27,7 @@ func (v *Vehicle) Step() {
 		log.Error().Err(err).Msg("Failed to get edge.")
 		panic(err)
 	}
+	log.Debug().Msgf("[%s] is on edge %d -> %d (III.2)", v.ID, v.PrevID, v.NextID)
 
 	data, ok := edge.Properties.Data.(Data)
 	if !ok {
@@ -36,38 +39,47 @@ func (v *Vehicle) Step() {
 
 	// III.3
 	v.DistanceRemaining += v.Delta
+	log.Debug().Msgf("[%s] has distance remaining %f (III.3)", v.ID, v.DistanceRemaining)
 
 	// III.4
-	if v.DistanceRemaining >= v.Speed {
+	log.Debug().Msgf("[%s] has speed %f (III.4)", v.ID, v.Speed)
+	for v.DistanceRemaining >= v.Speed && v.DistanceRemaining-v.Speed > 0 {
 		v.DistanceRemaining -= v.Speed // III.5
-	} else {
-		// III.6
-		v.Delta = v.DistanceRemaining
-		v.DistanceRemaining = 0
+		log.Debug().Msgf("[%s] has distance remaining %f (III.5)", v.ID, v.DistanceRemaining)
 	}
+	// III.6
+	v.Delta = v.DistanceRemaining
+	v.DistanceRemaining = 0
+	log.Debug().Msgf("[%s] has delta remaining %f (III.6)", v.ID, v.Delta)
 
 	// because no vertex ID can be -1, which indicates a leaf switch.
 	nextStepId := v.GetNextID(v.NextID)
 	if nextStepId == -1 {
 		// III.9.2
-		log.Info().Msgf("[%s] is marked for deletion.", v.ID)
+		log.Info().Msgf("[%s] is marked for deletion. (III.9.2)", v.ID)
 		return
 	} else if nextStepId == 0 {
 		// III.8
+		log.Info().Msgf("[%s] is parked. (III.8)", v.ID)
 		v.IsParked = true
 		return
 	}
 
-	v.PrevID = v.NextID              // III.6.1
+	v.PrevID = v.NextID // III.6.1
+	log.Debug().Msgf("[%s] has prevID %d (III.6.1)", v.ID, v.PrevID)
 	v.NextID = v.GetNextID(v.PrevID) // III.6.2
+	log.Debug().Msgf("[%s] has nextID %d (III.6.2)", v.ID, v.NextID)
 
 	// III.8
 	if v.NextID == 0 {
+		log.Debug().Msgf("[%s] is parked. (III.8)", v.ID)
 		v.IsParked = true
+		return
 	}
 
 	// III.9.1
 	// continue steps
+	log.Debug().Msgf("[%s] is continuing steps. (III.9.1)", v.ID)
 }
 
 // GetNextID returns the next ID in the path, 0 if the vehicle is parked (III.7)

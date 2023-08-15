@@ -53,7 +53,7 @@ func main() {
 		return
 	}
 
-	mpi.Start(false)
+	mpi.Start(true)
 	defer mpi.Stop()
 	comm := mpi.NewCommunicator(nil)
 
@@ -103,8 +103,6 @@ func main() {
 			}
 		}
 	}
-
-	log.Debug().Msgf("[%d] Leaf lookup: %d->%v", taskID, 28095826, leafLookup[28095826])
 
 	if taskID == 0 {
 		size, err := rootGraph.Graph.Size()
@@ -170,6 +168,8 @@ func main() {
 				log.Error().Err(err).Msgf("[%d] Failed to receive vehicle on leaf", taskID)
 				return
 			}
+
+			log.Debug().Msgf("[%d] Received vehicle on leaf: %s", taskID, vehicleOnLeaf.ID)
 			vehicleOnLeaf.MarkedForDeletion = false // II.3
 
 			length, err := m.AskRootForEdgeLength(vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID) // II.4
