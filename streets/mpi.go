@@ -14,6 +14,8 @@ const (
 	REQUEST_EDGE         = 4
 	RECEIVE_EDGE         = 5
 	VEHICLE_OUT_ROOT_TAG = 6
+	REQUEST_DONE_INC_TAG = 7
+	DONE_BCAST_TAG       = 8
 )
 
 type MPI struct {
@@ -170,4 +172,29 @@ func (m *MPI) ReceiveVehicleOnLeaf() (Vehicle, error) {
 		return Vehicle{}, err
 	}
 	return vehicle, nil
+}
+
+func (m *MPI) SendDoneToRoot() {
+	m.comm.SendInt32(int32(1), ROOT_ID, REQUEST_DONE_INC_TAG)
+}
+
+func (m *MPI) ReceiveDoneFromLeaf(incrementor *int) {
+	log.Warn().Msgf("[%d] waiting for done from leaf", m.taskID)
+	b, _ := m.comm.RecvInt32(mpi.AnySource, REQUEST_DONE_INC_TAG)
+	log.Warn().Msgf("[%d] received done from leaf -> %v", m.taskID, b)
+	if b == 1 {
+		v := *incrementor
+		v++
+		*incrementor = v
+	}
+}
+
+func (m *MPI) BCastDone() int32 {
+	doneArr := make([]int32, 1)
+	if m.taskID == ROOT_ID {
+		doneArr[0] = int32(1)
+	}
+
+	m.comm.BcastInt32s(doneArr, ROOT_ID)
+	return 1
 }

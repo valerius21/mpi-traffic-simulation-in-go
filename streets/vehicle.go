@@ -60,6 +60,7 @@ func (v *Vehicle) Step() {
 		log.Info().Msgf("[%s] is marked for deletion. (III.9.2)", v.ID)
 		return
 	} else if nextStepId == 0 {
+		// FIXME: only this parking is triggered
 		// III.8
 		log.Info().Msgf("[%s] is parked. (III.8)", v.ID)
 		v.IsParked = true
@@ -108,7 +109,7 @@ func (v *Vehicle) GetNextID(prevID int) int {
 		log.Debug().Msgf("Deletion causing ID for %s -> %d", v.ID, nextID)
 		// III.9.2
 		v.MarkedForDeletion = true
-		//return nextID
+		//return -
 	}
 
 	return nextID

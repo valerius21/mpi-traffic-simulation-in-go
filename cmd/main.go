@@ -73,6 +73,7 @@ func main() {
 			continue
 		}
 		log.Debug().Msgf("[%d] Setting up leaf (WorldSize: %d)", taskID, mpi.WorldSize())
+
 		// rank means taskID
 		l, err := setupLeaf(jsonPath, rootGraph, rectangularSplits, rank, rank)
 		if err != nil {
@@ -83,7 +84,6 @@ func main() {
 	}
 
 	log.Info().Msgf("[%d] Leaf list length: %d", taskID, len(leafList))
-
 	var leafLookup = make(map[int]int) // [vertexID] => leafID
 	edges, err := rootGraph.Graph.Edges()
 	if err != nil {
@@ -104,7 +104,9 @@ func main() {
 		}
 	}
 
+	comm.Barrier()
 	if taskID == 0 {
+		incrementor := 0
 		size, err := rootGraph.Graph.Size()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get size of graph")
@@ -136,8 +138,7 @@ func main() {
 			if done {
 				return
 			}
-		}(&wg) // TODO: add done channel?
-		// TODO: check if parameter is correct or if it should be a pointer
+		}(&wg)
 		log.Info().Msgf("[%d] Waiting for length request", taskID)
 
 		wg.Add(1)
@@ -147,14 +148,27 @@ func main() {
 				return
 			}
 		}(&wg)
-		// TODO: check if parameter is correct or if it should be a pointer
 		log.Info().Msgf("[%d] Waiting for receive and send request", taskID)
 
-		wg.Wait()
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			ListenForParking(m, &incrementor, taskID)
+		}(&wg)
+
+		for {
+			if incrementor == len(vehicleList) {
+				comm.Barrier()
+				break
+			}
+		}
+		m.BCastDone()
 	} else {
 		log.Info().Msgf("[%d] Starting leaf", taskID)
 		m := streets.NewMPI(taskID, *comm, rootGraph)
 		leaf := leafList[taskID-1]
+		// TODO: barrier leafs here
+		// new comm with ranks > 0
 		size, err := leaf.Graph.Size()
 		if err != nil {
 			log.Error().Err(err).Msgf("[%d] Failed to get size of graph", taskID)
@@ -162,28 +176,58 @@ func main() {
 		}
 		log.Info().Msgf("[%d] Starting leaf size: %d", taskID, size)
 
-		for {
-			vehicleOnLeaf, err := m.ReceiveVehicleOnLeaf() // II.1 & II.2
-			if err != nil {
-				log.Error().Err(err).Msgf("[%d] Failed to receive vehicle on leaf", taskID)
-				return
+		//go WaitForStop(m)
+		stopChannel := make(chan int32, 1)
+		var wg sync.WaitGroup
+		go func(wg *sync.WaitGroup) {
+			log.Debug().Msgf("[%d] Waiting for stop signal", taskID)
+			stopChannel <- m.BCastDone() // IV
+			log.Debug().Msgf("[%d] I Received stop signal", taskID)
+			os.Exit(0)
+		}(&wg)
+
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			var internalWG sync.WaitGroup
+			for {
+				select {
+				case <-stopChannel:
+					log.Info().Msgf("[%d] II Received stop signal", taskID)
+					internalWG.Done()
+					return
+				default:
+					vehicleOnLeaf, err := m.ReceiveVehicleOnLeaf() // II.1 & II.2
+					if err != nil {
+						log.Error().Err(err).Msgf("[%d] Failed to receive vehicle on leaf", taskID)
+						return
+					}
+					vehicleOnLeaf.StreetGraph = leaf // II.5.1
+
+					log.Debug().Msgf("[%d] Received vehicle on leaf: %s, %d->%d", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
+					vehicleOnLeaf.MarkedForDeletion = false // II.3
+
+					length, err := m.AskRootForEdgeLength(vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID) // II.4
+					if err != nil {
+						log.Error().Err(err).Msgf("[%d] Failed to ask root for edge length", taskID)
+						return
+					}
+					vehicleOnLeaf.Delta += length // II.5
+					internalWG.Add(1)
+					go driveVehicle(vehicleOnLeaf, taskID, m, &internalWG)
+				}
 			}
-			vehicleOnLeaf.StreetGraph = leaf // II.5.1
+		}(&wg)
+		wg.Wait()
+		mpi.Stop()
+	}
+}
 
-			log.Debug().Msgf("[%d] Received vehicle on leaf: %s, %d->%d", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
-			vehicleOnLeaf.MarkedForDeletion = false // II.3
-
-			length, err := m.AskRootForEdgeLength(vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID) // II.4
-			if err != nil {
-				log.Error().Err(err).Msgf("[%d] Failed to ask root for edge length", taskID)
-				return
-			}
-			vehicleOnLeaf.Delta += length // II.5
-
-			// TODO: add previous edge length?
-			go driveVehicle(vehicleOnLeaf, taskID, m)
-		}
-
+func ListenForParking(m *streets.MPI, incrementor *int, taskID int) {
+	for {
+		m.ReceiveDoneFromLeaf(incrementor)
+		log.Info().Msgf("[%d] Received done from leaf", taskID)
+		m.BCastDone()
 	}
 }
 
@@ -210,7 +254,8 @@ func ListenForLengthRequest(err error, m *streets.MPI) (error, bool) {
 	}
 }
 
-func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI) bool {
+func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI, wg *sync.WaitGroup) bool {
+	defer wg.Done()
 	// update nodes after graph transition II.5.2 -> shift the array
 	log.Debug().Msgf("[%d] I driveVehicle() Driving vehicle %s %d->%d ", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
 	vehicleOnLeaf.PrevID = vehicleOnLeaf.GetNextID(vehicleOnLeaf.PrevID)
@@ -220,6 +265,8 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI) boo
 	for {
 		if vehicleOnLeaf.IsParked { // II.7.1
 			log.Info().Msgf("[%d] Vehicle %s is parked", taskID, vehicleOnLeaf.ID) // II.10
+			m.SendDoneToRoot()
+			log.Debug().Msgf("[%d] Sent done to root", taskID)
 			break
 		} else if vehicleOnLeaf.MarkedForDeletion { // II.7.2
 			log.Debug().Msgf("[%d] Vehicle %s is marked for deletion", taskID, vehicleOnLeaf.ID)
