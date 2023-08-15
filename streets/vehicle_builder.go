@@ -114,14 +114,17 @@ func (vb *VehicleBuilder) Build() (Vehicle, error) {
 		PrevID:            vb.prevID,
 		IsParked:          vb.isParked,
 		DistanceRemaining: 0.0, // default value
-		g:                 vb.graph,
+		StreetGraph:       vb.graph,
 	}
 
 	// ensure nextID is set
-	id := vehicle.getNextID()
+	id := vehicle.GetNextID(vehicle.PathIDs[0])
 	if id == 0 {
 		vehicle.IsParked = true
 		vehicle.NextID = 0
+	} else if id == -1 {
+		// TODO: this should never happen
+		panic("vehicle.GetNextID returned -1 at initialization")
 	} else {
 		vehicle.NextID = id
 	}

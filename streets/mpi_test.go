@@ -59,10 +59,10 @@ func TestEdgeRequest(t *testing.T) {
 	rootGraph, _ := bRoot.Build()
 
 	leftB := NewGraphBuilder().WithEdges(edges).WithVertices(vertices).SetTopRightBottomLeftVertices()
-	leftB = leftB.NumberOfRects(2).DivideGraphsIntoRects().PickRect(0).FilterForRect().IsLeaf(rootGraph)
+	leftB = leftB.NumberOfRects(2).DivideGraphsIntoRects().PickRect(0).FilterForRect().IsLeaf(rootGraph, 0)
 
 	rightB := NewGraphBuilder().WithEdges(edges).WithVertices(vertices).SetTopRightBottomLeftVertices()
-	rightB = rightB.NumberOfRects(2).DivideGraphsIntoRects().PickRect(1).FilterForRect().IsLeaf(rootGraph)
+	rightB = rightB.NumberOfRects(2).DivideGraphsIntoRects().PickRect(1).FilterForRect().IsLeaf(rootGraph, 0)
 
 	leftGraph, _ := leftB.Build()
 	_, _ = rightB.Build()

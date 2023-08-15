@@ -19,6 +19,7 @@ func main() {
 	maxSpeed := flag.Float64("max-speed", 8.5, "Maximum speed")
 	jsonPath := flag.String("jsonPath", "assets/out.json", "Path to the json containing the graph data")
 	debug := flag.Bool("debug", false, "Enable debug mode")
+	useMPI := flag.Bool("mpi", false, "Use MPI")
 
 	flag.Parse()
 
@@ -42,7 +43,8 @@ func main() {
 		return
 	}
 
-	if !mpi.IsOn() {
+	if !*useMPI {
+		log.Info().Msg("Running without MPI")
 		if *useRoutines {
 			runWithGoRoutines(vehicleList)
 		} else {
@@ -63,7 +65,22 @@ func main() {
 		return
 	}
 
+	// I.3 every process will divide the graph into rectangles
 	rectangularSplits := mpi.WorldSize() - 1
+	leafList := make([]*streets.StreetGraph, 0)
+	for i := 0; i < mpi.WorldSize(); i++ {
+		if i == streets.ROOT_ID {
+			continue
+		}
+		//log.Debug().Msgf("[%d] Setting up leaf (WorldSize: %d)", taskID, mpi.WorldSize())
+		// i means taskID
+		l, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, i-1, i)
+		if !ok {
+			log.Error().Msgf("[%d] Failed to setup leaf", taskID)
+			return
+		}
+		leafList = append(leafList, l)
+	}
 
 	if taskID == 0 {
 		size, err := rootGraph.Graph.Size()
@@ -73,33 +90,121 @@ func main() {
 		}
 		log.Info().Msgf("Number of vertices: %d", size)
 		m := streets.NewMPI(0, *comm, rootGraph)
-		for {
-			// root process will listen for incoming requests
-			err = m.RespondToEdgeLengthRequest()
+
+		// I.4 root process will emit vehicles initially
+		for _, vehicle := range vehicleList {
+			err = m.EmitVehicle(*vehicle)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to respond to edge length request")
+				log.Error().Err(err).Msg("Failed to emit vehicle")
 				return
 			}
 		}
+
+		// I.5 root process will listen for incoming requests
+		var wg sync.WaitGroup
+
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			err, done := ListenForLengthRequest(err, m)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to listen for length request")
+				return
+			}
+			if done {
+				return
+			}
+		}(&wg) // TODO: add done channel?
+		// TODO: check if parameter is correct or if it should be a pointer
+
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			if ListenForReceiveAndSendRequest(err, m, leafList) {
+				return
+			}
+		}(&wg)
+		// TODO: check if parameter is correct or if it should be a pointer
+
+		wg.Wait()
 	} else {
-		// Broadcast to the leafs, if one of them has the current vertex of the vehicle
-		// just send it -> (P) What if the vertex does not exist? -> Vehicle is lost...
-		// leafs will listen for incoming vehicles and add them to their graph
-		// leafs start the drive on them
-		// While true loop for constantly listening to receive bytes?
+		m := streets.NewMPI(taskID, *comm, rootGraph)
+		leaf := leafList[taskID-1]
 
-		_ = streets.NewMPI(taskID, *comm, rootGraph)
+		for {
+			vehicleOnLeaf, err := m.ReceiveVehicleOnLeaf() // II.1 & II.2
+			if err != nil {
+				log.Error().Err(err).Msgf("[%d] Failed to receive vehicle on leaf", taskID)
+				return
+			}
+			vehicleOnLeaf.MarkedForDeletion = false // II.3
 
-		_, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, taskID-1, taskID)
-		if !ok {
-			log.Error().Msgf("[%d] Failed to setup leaf", taskID)
-			return
+			length, err := m.AskRootForEdgeLength(vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID) // II.4
+			if err != nil {
+				log.Error().Err(err).Msgf("[%d] Failed to ask root for edge length", taskID)
+				return
+			}
+			vehicleOnLeaf.Delta += length // II.5
+
+			// TODO: add previous edge length?
+			go driveVehicle(vehicleOnLeaf, leaf, taskID, m)
+		}
+
+	}
+}
+
+func ListenForReceiveAndSendRequest(err error, m *streets.MPI, leafList []*streets.StreetGraph) bool {
+	for {
+		// I.5.b root process will listen for incoming vehicles and send them to the leaf
+		err = m.ReceiveAndSendVehicleOverRoot(leafList)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to receive vehicle on root from leaf")
+			return true
 		}
 	}
 }
 
+func ListenForLengthRequest(err error, m *streets.MPI) (error, bool) {
+	for {
+		// I.5.a root process will listen for incoming requests for edge length
+		// TODO: make async
+		err = m.RespondToEdgeLengthRequest()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to respond to edge length request")
+			return nil, true
+		}
+	}
+	return err, false
+}
+
+func driveVehicle(vehicleOnLeaf streets.Vehicle, l *streets.StreetGraph, taskID int, m *streets.MPI) bool {
+	vehicleOnLeaf.StreetGraph = l // II.5.1
+
+	// update nodes after graph transition II.5.2 -> shift the array
+	vehicleOnLeaf.PrevID = vehicleOnLeaf.GetNextID(vehicleOnLeaf.PrevID)
+	vehicleOnLeaf.NextID = vehicleOnLeaf.GetNextID(vehicleOnLeaf.PrevID)
+
+	for {
+		if vehicleOnLeaf.IsParked { // II.7.1
+			log.Info().Msgf("[%d] Vehicle %s is parked", taskID, vehicleOnLeaf.ID) // II.10
+			break
+		} else if vehicleOnLeaf.MarkedForDeletion { // II.7.2
+			log.Debug().Msgf("[%d] Vehicle %s is marked for deletion", taskID, vehicleOnLeaf.ID)
+			err := m.SendVehicleToRoot(vehicleOnLeaf) // II.9
+			if err != nil {
+				log.Error().Err(err).Msgf("[%d] Failed to send vehicle to root", taskID)
+				return true
+			}
+			break
+		}
+		vehicleOnLeaf.Step() // II.8
+	}
+	return false
+}
+
 func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, bool) {
-	gb := streets.NewGraphBuilder().FromJsonFile(*jsonPath).IsLeaf(rootGraph).NumberOfRects(rectangularSplits)
+	log.Debug().Msgf("[%d] i=%d", taskID, i)
+	gb := streets.NewGraphBuilder().FromJsonFile(*jsonPath).IsLeaf(rootGraph, taskID).NumberOfRects(rectangularSplits)
 	gb = gb.PickRect(i - 1).DivideGraphsIntoRects().FilterForRect()
 	gb = gb.SetTopRightBottomLeftVertices()
 	leafGraph, err := gb.Build()

@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Drive is for the non-MPI implementation
 func (v *Vehicle) Drive() {
 	for !v.IsParked {
 		v.Step()
@@ -12,8 +13,14 @@ func (v *Vehicle) Drive() {
 	log.Info().Msgf("[%s] is parked.", v.ID)
 }
 
+// Step is the main algorithm for the vehicle
 func (v *Vehicle) Step() {
-	edge, err := v.g.Graph.Edge(v.PrevID, v.NextID)
+	if v.NextID < 0 { // III.1
+		v.IsParked = true
+	}
+
+	// III.2 Assuming that the edge is in the graph
+	edge, err := v.StreetGraph.Graph.Edge(v.PrevID, v.NextID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get edge.")
 		panic(err)
@@ -26,36 +33,51 @@ func (v *Vehicle) Step() {
 	}
 
 	v.DistanceRemaining = data.Length
+
+	// III.3
 	v.DistanceRemaining += v.Delta
 
+	// III.4
 	if v.DistanceRemaining >= v.Speed {
-		v.DistanceRemaining -= v.Speed
+		v.DistanceRemaining -= v.Speed // III.5
 	} else {
+		// III.6
 		v.Delta = v.DistanceRemaining
 		v.DistanceRemaining = 0
 	}
 
-	v.PrevID = v.NextID
-	v.NextID = v.getNextID()
+	// because no vertex ID can be -1, which indicates a leaf switch.
+	nextStepId := v.GetNextID(v.NextID)
+	if nextStepId == -1 {
+		// III.9.2
+		log.Info().Msgf("[%s] is marked for deletion.", v.ID)
+		return
+	} else if nextStepId == 0 {
+		// III.8
+		v.IsParked = true
+		return
+	}
 
+	v.PrevID = v.NextID              // III.6.1
+	v.NextID = v.GetNextID(v.PrevID) // III.6.2
+
+	// III.8
 	if v.NextID == 0 {
 		v.IsParked = true
 	}
+
+	// III.9.1
+	// continue steps
 }
 
-// getNextID returns the next ID in the path, 0 if the vehicle is parked
-func (v *Vehicle) getNextID() int {
+// GetNextID returns the next ID in the path, 0 if the vehicle is parked (III.7)
+func (v *Vehicle) GetNextID(prevID int) int {
 	var prevIdIndex = -1
 
 	for i := 0; i < len(v.PathIDs); i++ {
-		if v.PathIDs[i] == v.PrevID {
+		if v.PathIDs[i] == prevID {
 			prevIdIndex = i
 		}
-	}
-
-	if prevIdIndex == -1 {
-		log.Error().Msgf("Could not find prevID %d in PathIDs %v", v.PrevID, v.PathIDs)
-		panic(errors.New("could not find prevID in PathIDs"))
 	}
 
 	isLastIdx := prevIdIndex == len(v.PathIDs)-1
@@ -63,22 +85,17 @@ func (v *Vehicle) getNextID() int {
 	// if the vehicle is parked, it is at its destination
 	if v.NextID == 0 || isLastIdx || v.IsParked {
 		// if vehicle is parked nextID is not 0
+		v.IsParked = true
 		return 0
 	}
 
 	nextID := v.PathIDs[prevIdIndex+1]
 
-	vertexExistsOnCurrentGraph := v.g.VertexExists(nextID)
+	vertexExistsOnCurrentGraph := v.StreetGraph.VertexExists(nextID)
 	if !vertexExistsOnCurrentGraph {
-		// 1. Call Root
-		// 2. Send nextID (int)
-		// 3. Root replies with Node ID
-		// 4. pack
-		// 5. delete vehicle
-		// 6. send to node.
-		err := errors.New("failed to get vertex")
-		log.Error().Err(err).Msgf("NOT IN GRAPH: Failed to get vertex %d", nextID)
-		panic(err)
+		// III.9.2
+		v.MarkedForDeletion = true
+		return -1
 	}
 
 	return nextID

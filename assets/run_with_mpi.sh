@@ -4,4 +4,4 @@
 go mod tidy
 
 # Run the program
-mpirun -np 4 go run cmd/main.go -debug
+mpirun -np 2 go run cmd/main.go -debug -mpi

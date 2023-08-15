@@ -21,5 +21,6 @@ type Vehicle struct {
 	PrevID            int     `json:"prev_id"`
 	IsParked          bool    `json:"is_parked"`
 	DistanceRemaining float64 `json:"distance_remaining"`
-	g                 *StreetGraph
+	StreetGraph       *StreetGraph
+	MarkedForDeletion bool
 }

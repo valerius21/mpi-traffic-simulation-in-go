@@ -6,7 +6,6 @@ import (
 	"pchpc_next/utils"
 	"strconv"
 
-	"github.com/aidarkhanov/nanoid"
 	"github.com/dominikbraun/graph"
 	"github.com/rs/zerolog/log"
 )
@@ -43,7 +42,7 @@ type GraphBuilder struct {
 	bot, top             point
 	rects                []rect
 	pickedRect           rect
-	id                   string
+	id                   int
 	root                 *StreetGraph
 }
 
@@ -286,12 +285,12 @@ func (gb *GraphBuilder) FilterForRect() *GraphBuilder {
 }
 
 func (gb *GraphBuilder) IsRoot() *GraphBuilder {
-	gb.id = "root"
+	gb.id = 0
 	return gb
 }
 
-func (gb *GraphBuilder) IsLeaf(root *StreetGraph) *GraphBuilder {
-	gb.id = nanoid.New()
+func (gb *GraphBuilder) IsLeaf(root *StreetGraph, taskID int) *GraphBuilder {
+	gb.id = taskID
 	gb.root = root
 	return gb
 }
@@ -328,7 +327,7 @@ func (gb *GraphBuilder) check() error {
 		return errors.New("no rectangle/vertex picked in graph")
 	}
 
-	if gb.id == "" {
+	if gb.id < 0 {
 		log.Error().Msg("No id set in graph. Use IsRoot() or IsLeaf() to set id.")
 		return errors.New("no id set in graph")
 	}

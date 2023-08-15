@@ -9,8 +9,8 @@ import (
 
 // StreetGraph is a graph of streets with vertices of type int and edges of type JVertex
 type StreetGraph struct {
-	// ID is the ID of the graph. Root graph has ID 0
-	ID string
+	// ID is the ID of the graph. Root graph has ID 0, leaf graphs have IDs 1, 2, 3, ...
+	ID int
 
 	// RootGraph is the root graph of the graph, nil if the graph is the root graph
 	RootGraph *StreetGraph
@@ -110,4 +110,13 @@ func (g *StreetGraph) AddVehicleFromJson(jsonBytes []byte) (*Vehicle, error) {
 	}
 
 	return &v, nil
+}
+
+func (g *StreetGraph) GetRectFromVertexID(vertexID int, leafs []*StreetGraph) (int, error) {
+	for _, leaf := range leafs {
+		if leaf.VertexExists(vertexID) {
+			return leaf.ID, nil
+		}
+	}
+	return -1, nil
 }

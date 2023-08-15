@@ -240,7 +240,7 @@ func TestGraphBuilder_IsRoot(t *testing.T) {
 	if b == nil {
 		t.Error("Builder is nil")
 	}
-	if b.id != "root" {
+	if b.id < 0 {
 		t.Error("Expected builder to be root")
 	}
 	if b.root != nil {
@@ -251,13 +251,13 @@ func TestGraphBuilder_IsRoot(t *testing.T) {
 func TestGraphBuilder_IsLeaf(t *testing.T) {
 	root := StreetGraph{}
 
-	b := NewGraphBuilder().IsLeaf(&root)
+	b := NewGraphBuilder().IsLeaf(&root, 0)
 
 	if b == nil {
 		t.Error("Builder is nil")
 	}
 
-	if b.id == "" {
+	if b.id < 0 {
 		t.Error("Expected builder to have ID")
 	}
 
