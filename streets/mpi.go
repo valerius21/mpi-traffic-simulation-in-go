@@ -38,14 +38,15 @@ func (m *MPI) AskRootForEdgeLength(srcVertexID, destVertexID int) (float64, erro
 		Dest: destVertexID,
 	}
 
-	edgePackage, err := e.Pack()
+	edgePackage, err := e.Marshal()
 	if err != nil {
 		return 0, errors.New("failed to pack edge package")
 	}
 
-	log.Info().Msgf("[%d] sending edge package", m.taskID)
+	log.Info().Msgf("[%d] sending edge package len(%d)", m.taskID, len(edgePackage))
 	// send request to root
-	m.comm.SendBytes(edgePackage, ROOT_ID, REQUEST_EDGE)
+	log.Debug().Msgf("[%d] sending edge %d->%d to root", m.taskID, srcVertexID, destVertexID)
+	m.comm.SendInt64s([]int64{int64(srcVertexID), int64(destVertexID)}, ROOT_ID, REQUEST_EDGE)
 
 	log.Info().Msgf("[%d] waiting to get edge package from root", m.taskID)
 	// receive edge length from root
@@ -64,20 +65,24 @@ func (m *MPI) RespondToEdgeLengthRequest() error {
 	}
 
 	log.Info().Msg("[root] waiting for edge package")
-	jBytes, status := m.comm.RecvBytes(mpi.AnySource, mpi.AnyTag)
-	log.Info().Msgf("[root] received edge package from %d", status.GetSource())
-	if jBytes == nil {
+	intArr, status := m.comm.RecvInt64s(mpi.AnySource, REQUEST_EDGE)
+	//jBytes, status := m.comm.RecvBytes(mpi.AnySource, REQUEST_EDGE)
+	log.Info().Msgf("[root] received edge package from %d len(%d)", status.GetSource(), len(intArr))
+	if intArr == nil || len(intArr) != 2 {
 		return errors.New("failed to receive edge package")
 	}
+	////edgePackage, err := UnmarshalEdgePackage(jBytes)
+	//if err != nil {
+	//	return errors.New("failed to unmarshal edge package")
+	//}
 
-	edgePackage, err := UnmarshalEdgePackage(jBytes)
+	src := int(intArr[0])
+	dest := int(intArr[1])
+	log.Debug().Msgf("[root] received edge package from %d src(%d) dest(%d)", status.GetSource(), src, dest)
+	edge, err := m.g.Graph.Edge(src, dest)
+
 	if err != nil {
-		return errors.New("failed to unmarshal edge package")
-	}
-
-	edge, err := m.g.Graph.Edge(edgePackage.Src, edgePackage.Dest)
-
-	if err != nil {
+		log.Error().Msgf("failed to get edge: %s", err.Error())
 		return err
 	}
 

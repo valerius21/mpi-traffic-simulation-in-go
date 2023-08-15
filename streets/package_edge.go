@@ -18,7 +18,3 @@ type EdgePackage struct {
 	Src  int `json:"src"`
 	Dest int `json:"dest"`
 }
-
-func (r *EdgePackage) Pack() ([]byte, error) {
-	return r.Marshal()
-}

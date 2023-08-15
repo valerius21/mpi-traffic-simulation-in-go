@@ -112,7 +112,7 @@ func main() {
 			log.Error().Err(err).Msg("Failed to get size of graph")
 			return
 		}
-		log.Info().Msgf("Number of vertices: %d", size)
+		log.Info().Msgf("[0] Number of vertices: %d", size)
 		m := streets.NewMPI(0, *comm, rootGraph)
 
 		// I.4 root process will emit vehicles initially
