@@ -68,19 +68,43 @@ func main() {
 	// I.3 every process will divide the graph into rectangles
 	rectangularSplits := mpi.WorldSize() - 1
 	leafList := make([]*streets.StreetGraph, 0)
-	for i := 0; i < mpi.WorldSize(); i++ {
-		if i == streets.ROOT_ID {
+	for rank := 0; rank <= rectangularSplits; rank++ {
+		if rank == 0 {
 			continue
 		}
-		//log.Debug().Msgf("[%d] Setting up leaf (WorldSize: %d)", taskID, mpi.WorldSize())
-		// i means taskID
-		l, ok := setupLeaf(jsonPath, rootGraph, rectangularSplits, i-1, i)
-		if !ok {
+		log.Debug().Msgf("[%d] Setting up leaf (WorldSize: %d)", taskID, mpi.WorldSize())
+		// rank means taskID
+		l, err := setupLeaf(jsonPath, rootGraph, rectangularSplits, rank, rank)
+		if err != nil {
 			log.Error().Msgf("[%d] Failed to setup leaf", taskID)
 			return
 		}
 		leafList = append(leafList, l)
 	}
+
+	log.Info().Msgf("[%d] Leaf list length: %d", taskID, len(leafList))
+
+	var leafLookup = make(map[int]int) // [vertexID] => leafID
+	edges, err := rootGraph.Graph.Edges()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get edges")
+		return
+	}
+
+	for _, graph := range leafList {
+		for _, edge := range edges {
+			src := edge.Source
+			dest := edge.Target
+			if graph.VertexExists(src) {
+				leafLookup[src] = graph.ID
+			}
+			if graph.VertexExists(dest) {
+				leafLookup[dest] = graph.ID
+			}
+		}
+	}
+
+	log.Debug().Msgf("[%d] Leaf lookup: %d->%v", taskID, 28095826, leafLookup[28095826])
 
 	if taskID == 0 {
 		size, err := rootGraph.Graph.Size()
@@ -93,7 +117,7 @@ func main() {
 
 		// I.4 root process will emit vehicles initially
 		for _, vehicle := range vehicleList {
-			err = m.EmitVehicle(*vehicle)
+			err = m.EmitVehicle(*vehicle, leafLookup)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to emit vehicle")
 				return
@@ -116,20 +140,29 @@ func main() {
 			}
 		}(&wg) // TODO: add done channel?
 		// TODO: check if parameter is correct or if it should be a pointer
+		log.Info().Msgf("[%d] Waiting for length request", taskID)
 
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			if ListenForReceiveAndSendRequest(err, m, leafList) {
+			if ListenForReceiveAndSendRequest(err, m, leafLookup) {
 				return
 			}
 		}(&wg)
 		// TODO: check if parameter is correct or if it should be a pointer
+		log.Info().Msgf("[%d] Waiting for receive and send request", taskID)
 
 		wg.Wait()
 	} else {
+		log.Info().Msgf("[%d] Starting leaf", taskID)
 		m := streets.NewMPI(taskID, *comm, rootGraph)
 		leaf := leafList[taskID-1]
+		size, err := leaf.Graph.Size()
+		if err != nil {
+			log.Error().Err(err).Msgf("[%d] Failed to get size of graph", taskID)
+			return
+		}
+		log.Info().Msgf("[%d] Starting leaf size: %d", taskID, size)
 
 		for {
 			vehicleOnLeaf, err := m.ReceiveVehicleOnLeaf() // II.1 & II.2
@@ -153,10 +186,10 @@ func main() {
 	}
 }
 
-func ListenForReceiveAndSendRequest(err error, m *streets.MPI, leafList []*streets.StreetGraph) bool {
+func ListenForReceiveAndSendRequest(err error, m *streets.MPI, lookupTable map[int]int) bool {
 	for {
 		// I.5.b root process will listen for incoming vehicles and send them to the leaf
-		err = m.ReceiveAndSendVehicleOverRoot(leafList)
+		err = m.ReceiveAndSendVehicleOverRoot(lookupTable)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to receive vehicle on root from leaf")
 			return true
@@ -202,7 +235,7 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, l *streets.StreetGraph, taskID 
 	return false
 }
 
-func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, bool) {
+func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, error) {
 	log.Debug().Msgf("[%d] i=%d", taskID, i)
 	gb := streets.NewGraphBuilder().FromJsonFile(*jsonPath).IsLeaf(rootGraph, taskID).NumberOfRects(rectangularSplits)
 	gb = gb.PickRect(i - 1).DivideGraphsIntoRects().FilterForRect()
@@ -210,15 +243,15 @@ func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSpli
 	leafGraph, err := gb.Build()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to build graph")
-		return nil, true
+		return nil, err
 	}
 	size, err := leafGraph.Graph.Size()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to get size of graph")
-		return nil, true
+		return nil, err
 	}
 	log.Info().Msgf("[%d] Number of vertices: %d", taskID, size)
-	return leafGraph, false
+	return leafGraph, nil
 }
 
 func runWithGoRoutines(vehicleList []*streets.Vehicle) {

@@ -106,7 +106,7 @@ func (m *MPI) SendVehicleToRoot(vehicle Vehicle) error {
 	return nil
 }
 
-func (m *MPI) EmitVehicle(vehicle Vehicle) error {
+func (m *MPI) EmitVehicle(vehicle Vehicle, lookupTable map[int]int) error {
 	if m.taskID != ROOT_ID {
 		return errors.New("process is not root")
 	}
@@ -116,33 +116,39 @@ func (m *MPI) EmitVehicle(vehicle Vehicle) error {
 		return errors.New("failed to pack vehicle")
 	}
 
-	log.Info().Msgf("[%d] sending vehicle", m.taskID)
+	log.Debug().Msgf("[%d] sending vehicle", m.taskID)
 
 	// broadcast vehicle to all processes
-	m.comm.BcastBytes(jBytes, ROOT_ID)
+	targetID := lookupTable[vehicle.NextID]
 
-	log.Info().Msgf("[%d] sent vehicle", m.taskID)
-	log.Warn().Msgf("[%d] vehicle deletion not implemented", m.taskID)
+	if targetID == 0 {
+		return errors.New("failed to find target leaf")
+	}
+
+	m.comm.SendBytes(jBytes, targetID, VEHICLE_IN_LEAF_TAG)
+
+	log.Info().Msgf("[%d] sent vehicle - %s", m.taskID, vehicle.ID)
 
 	return nil
 }
 
-func (m *MPI) ReceiveAndSendVehicleOverRoot(leafs []*StreetGraph) error {
+func (m *MPI) ReceiveAndSendVehicleOverRoot(lookupTable map[int]int) error {
 	if m.taskID != ROOT_ID {
 		return errors.New("process is not root")
 	}
 
-	jBytes, _ := m.comm.RecvBytes(mpi.AnySource, VEHICLE_OUT_TAG)
-
+	jBytes, status := m.comm.RecvBytes(mpi.AnySource, VEHICLE_OUT_TAG)
 	vehicle, err := UnmarshalVehicle(jBytes)
+	log.Info().Msgf("[%d] received vehicle from %d", m.taskID, status.GetSource())
+
 	if err != nil {
 		log.Error().Msgf("failed to unmarshal vehicle: %s", err.Error())
 		return err
 	}
-
-	targetID, err := m.g.GetRectFromVertexID(vehicle.NextID, leafs)
-	if err != nil {
-		return err
+	targetID := lookupTable[vehicle.NextID]
+	//targetID, err := m.g.GetRectFromVertexID(vehicle.NextID, leafs)
+	if targetID == 0 {
+		return errors.New("failed to find target leaf")
 	}
 	if targetID == -1 {
 		return errors.New("failed to find target leaf")
