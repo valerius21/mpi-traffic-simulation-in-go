@@ -91,7 +91,7 @@ func (m *MPI) RespondToEdgeLengthRequest() error {
 		return errors.New("edge data is not of type Data")
 	}
 
-	log.Info().Msg("[root] sending edge package")
+	log.Info().Msgf("[root] sending edge package %f", data.Length)
 	// send edge length to sender
 	m.comm.SendFloat64(data.Length, status.GetSource(), RECEIVE_EDGE)
 

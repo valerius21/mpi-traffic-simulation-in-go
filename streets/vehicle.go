@@ -54,7 +54,8 @@ func (v *Vehicle) Step() {
 
 	// because no vertex ID can be -1, which indicates a leaf switch.
 	nextStepId := v.GetNextID(v.NextID)
-	if nextStepId == -1 {
+	if v.MarkedForDeletion {
+		log.Debug().Msgf("[%s] Path %v - Next ID %d", v.ID, v.PathIDs, v.NextID)
 		// III.9.2
 		log.Info().Msgf("[%s] is marked for deletion. (III.9.2)", v.ID)
 		return
@@ -102,12 +103,12 @@ func (v *Vehicle) GetNextID(prevID int) int {
 	}
 
 	nextID := v.PathIDs[prevIdIndex+1]
-
 	vertexExistsOnCurrentGraph := v.StreetGraph.VertexExists(nextID)
 	if !vertexExistsOnCurrentGraph {
+		log.Debug().Msgf("Deletion causing ID for %s -> %d", v.ID, nextID)
 		// III.9.2
 		v.MarkedForDeletion = true
-		return -1
+		//return nextID
 	}
 
 	return nextID

@@ -168,8 +168,9 @@ func main() {
 				log.Error().Err(err).Msgf("[%d] Failed to receive vehicle on leaf", taskID)
 				return
 			}
+			vehicleOnLeaf.StreetGraph = leaf // II.5.1
 
-			log.Debug().Msgf("[%d] Received vehicle on leaf: %s", taskID, vehicleOnLeaf.ID)
+			log.Debug().Msgf("[%d] Received vehicle on leaf: %s, %d->%d", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
 			vehicleOnLeaf.MarkedForDeletion = false // II.3
 
 			length, err := m.AskRootForEdgeLength(vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID) // II.4
@@ -180,7 +181,7 @@ func main() {
 			vehicleOnLeaf.Delta += length // II.5
 
 			// TODO: add previous edge length?
-			go driveVehicle(vehicleOnLeaf, leaf, taskID, m)
+			go driveVehicle(vehicleOnLeaf, taskID, m)
 		}
 
 	}
@@ -207,15 +208,14 @@ func ListenForLengthRequest(err error, m *streets.MPI) (error, bool) {
 			return nil, true
 		}
 	}
-	return err, false
 }
 
-func driveVehicle(vehicleOnLeaf streets.Vehicle, l *streets.StreetGraph, taskID int, m *streets.MPI) bool {
-	vehicleOnLeaf.StreetGraph = l // II.5.1
-
+func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI) bool {
 	// update nodes after graph transition II.5.2 -> shift the array
+	log.Debug().Msgf("[%d] I driveVehicle() Driving vehicle %s %d->%d ", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
 	vehicleOnLeaf.PrevID = vehicleOnLeaf.GetNextID(vehicleOnLeaf.PrevID)
 	vehicleOnLeaf.NextID = vehicleOnLeaf.GetNextID(vehicleOnLeaf.PrevID)
+	log.Debug().Msgf("[%d] II driveVehicle() Driving vehicle %s %d->%d ", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
 
 	for {
 		if vehicleOnLeaf.IsParked { // II.7.1
@@ -224,6 +224,7 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, l *streets.StreetGraph, taskID 
 		} else if vehicleOnLeaf.MarkedForDeletion { // II.7.2
 			log.Debug().Msgf("[%d] Vehicle %s is marked for deletion", taskID, vehicleOnLeaf.ID)
 			err := m.SendVehicleToRoot(vehicleOnLeaf) // II.9
+			log.Debug().Msgf("[%d] Sent vehicle %s to root %d->%d", taskID, vehicleOnLeaf.ID, vehicleOnLeaf.PrevID, vehicleOnLeaf.NextID)
 			if err != nil {
 				log.Error().Err(err).Msgf("[%d] Failed to send vehicle to root", taskID)
 				return true
