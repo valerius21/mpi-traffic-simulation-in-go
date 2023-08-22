@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/aidarkhanov/nanoid"
 	"github.com/rs/zerolog/log"
+	"strings"
 )
 
 type VehicleBuilder struct {
@@ -105,8 +106,17 @@ func (vb *VehicleBuilder) Build() (Vehicle, error) {
 		return Vehicle{}, err
 	}
 
+	newAlphabet := nanoid.DefaultAlphabet
+	newAlphabet = strings.Replace(newAlphabet, "_", "", -1)
+	newAlphabet = strings.Replace(newAlphabet, "-", "", -1)
+	vid, err := nanoid.Generate(newAlphabet, 10)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate vehicle ID.")
+		return Vehicle{}, err
+	}
+
 	vehicle := Vehicle{
-		ID:                nanoid.New(),
+		ID:                vid,
 		PathIDs:           vb.pathIDs,
 		Speed:             vb.speed,
 		Delta:             vb.delta,

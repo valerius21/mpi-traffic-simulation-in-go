@@ -1,10 +1,19 @@
 package streets
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/gob"
+)
 
 func UnmarshalVehicle(data []byte) (Vehicle, error) {
 	var r rawVehicle
-	err := json.Unmarshal(data, &r)
+
+	byteBuffer := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(byteBuffer)
+
+	err := dec.Decode(&r)
+
+	//err := json.Unmarshal(data, &r)
 	return Vehicle{
 		ID:                r.ID,
 		PathIDs:           r.PathIDs,
@@ -20,7 +29,7 @@ func UnmarshalVehicle(data []byte) (Vehicle, error) {
 }
 
 func (v *Vehicle) Marshal() ([]byte, error) {
-	return json.Marshal(rawVehicle{
+	rawVehicle := rawVehicle{
 		ID:                v.ID,
 		PathIDs:           v.PathIDs,
 		Speed:             v.Speed,
@@ -29,7 +38,13 @@ func (v *Vehicle) Marshal() ([]byte, error) {
 		PrevID:            v.PrevID,
 		IsParked:          v.IsParked,
 		DistanceRemaining: v.DistanceRemaining,
-	})
+	}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+
+	err := enc.Encode(rawVehicle)
+	return buf.Bytes(), err
 }
 
 type rawVehicle struct {
