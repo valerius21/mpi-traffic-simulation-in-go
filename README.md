@@ -17,5 +17,6 @@ docker run -d --name vmpi -v $(pwd):/app vmpi:dev
 ```
 
 ```bash
-docker exec -it vmpi /app/assets/run_with_mpi.sh <number of vehicles>
+# run 10 vehicles
+docker exec -it vmpi /app/assets/run_with_mpi.sh -n 10 -debug
 ```
