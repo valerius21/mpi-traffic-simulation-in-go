@@ -145,6 +145,7 @@ func (m *MPI) ReceiveAndSendVehicleOverRoot(lookupTable map[int]int) error {
 	}
 
 	jBytes, status := m.comm.RecvBytes(mpi.AnySource, VEHICLE_OUT_TAG)
+	log.Debug().Msgf("[%d] received vehicle request from %d", m.taskID, status.GetSource())
 	vehicle, err := UnmarshalVehicle(jBytes)
 	log.Info().Msgf("[%d] received vehicle from %d", m.taskID, status.GetSource())
 

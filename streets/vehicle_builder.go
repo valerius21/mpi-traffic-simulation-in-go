@@ -109,7 +109,7 @@ func (vb *VehicleBuilder) Build() (Vehicle, error) {
 	newAlphabet := nanoid.DefaultAlphabet
 	newAlphabet = strings.Replace(newAlphabet, "_", "", -1)
 	newAlphabet = strings.Replace(newAlphabet, "-", "", -1)
-	vid, err := nanoid.Generate(newAlphabet, 10)
+	vid, err := nanoid.Generate(newAlphabet, 20)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to generate vehicle ID.")
 		return Vehicle{}, err

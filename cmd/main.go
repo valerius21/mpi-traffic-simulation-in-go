@@ -57,7 +57,6 @@ func main() {
 	defer mpi.Stop()
 	comm := mpi.NewCommunicator(nil)
 
-	//numTasks := world.Size()
 	taskID := comm.Rank()
 
 	if mpi.WorldSize() < 2 {
@@ -106,7 +105,7 @@ func main() {
 
 	comm.Barrier()
 	if taskID == 0 {
-		incrementor := 0
+		//incrementor := 0
 		size, err := rootGraph.Graph.Size()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get size of graph")
@@ -125,44 +124,42 @@ func main() {
 		}
 
 		// I.5 root process will listen for incoming requests
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			err, done := ListenForLengthRequest(err, m)
+		go func() {
+			//defer wg.Done()
+			err, _ := ListenForLengthRequest(err, m)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to listen for length request")
 				return
 			}
-			if done {
-				return
-			}
-		}(&wg)
+			//if done {
+			//	return
+			//}
+		}()
+
 		log.Info().Msgf("[%d] Waiting for length request", taskID)
 
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
+		go func() {
 			if ListenForReceiveAndSendRequest(err, m, leafLookup) {
 				return
 			}
-		}(&wg)
+		}()
 		log.Info().Msgf("[%d] Waiting for receive and send request", taskID)
 
-		wg.Add(1)
-		go func(wg *sync.WaitGroup) {
-			defer wg.Done()
-			ListenForParking(m, &incrementor, taskID)
-		}(&wg)
+		//wg.Add(1)
+		//go func(wg *sync.WaitGroup) {
+		//	defer wg.Done()
+		//	ListenForParking(m, &incrementor, taskID)
+		//}(&wg)
 
-		for {
-			if incrementor == len(vehicleList) {
-				comm.Barrier()
-				break
-			}
-		}
-		m.BCastDone()
+		//for {
+		//	if incrementor == len(vehicleList) {
+		//		comm.Barrier()
+		//		break
+		//	}
+		//}
+		//m.BCastDone()
+		//wg.Wait()
+		select {}
 	} else {
 		log.Info().Msgf("[%d] Starting leaf", taskID)
 		m := streets.NewMPI(taskID, *comm, rootGraph)
@@ -183,7 +180,7 @@ func main() {
 			log.Debug().Msgf("[%d] Waiting for stop signal", taskID)
 			stopChannel <- m.BCastDone() // IV
 			log.Debug().Msgf("[%d] I Received stop signal", taskID)
-			os.Exit(0)
+			//os.Exit(0)
 		}(&wg)
 
 		wg.Add(1)
@@ -219,7 +216,7 @@ func main() {
 			}
 		}(&wg)
 		wg.Wait()
-		mpi.Stop()
+		//mpi.Stop()
 	}
 }
 
@@ -265,9 +262,9 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI, wg 
 	for {
 		if vehicleOnLeaf.IsParked { // II.7.1
 			log.Info().Msgf("[%d] Vehicle %s is parked", taskID, vehicleOnLeaf.ID) // II.10
-			m.SendDoneToRoot()
+			//m.SendDoneToRoot()
 			log.Debug().Msgf("[%d] Sent done to root", taskID)
-			break
+			return false
 		} else if vehicleOnLeaf.MarkedForDeletion { // II.7.2
 			log.Debug().Msgf("[%d] Vehicle %s is marked for deletion", taskID, vehicleOnLeaf.ID)
 			err := m.SendVehicleToRoot(vehicleOnLeaf) // II.9
@@ -276,11 +273,11 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI, wg 
 				log.Error().Err(err).Msgf("[%d] Failed to send vehicle to root", taskID)
 				return true
 			}
-			break
+			//break
+			return false
 		}
 		vehicleOnLeaf.Step() // II.8
 	}
-	return false
 }
 
 func setupLeaf(jsonPath *string, rootGraph *streets.StreetGraph, rectangularSplits int, i int, taskID int) (*streets.StreetGraph, error) {
