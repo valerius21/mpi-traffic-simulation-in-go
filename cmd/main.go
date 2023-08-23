@@ -9,6 +9,7 @@ import (
 	"pchpc_next/streets"
 	"strconv"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -55,6 +56,7 @@ func main() {
 
 	mpi.Start(true)
 	defer mpi.Stop()
+
 	comm := mpi.NewCommunicator(nil)
 
 	taskID := comm.Rank()
@@ -104,6 +106,8 @@ func main() {
 	}
 
 	comm.Barrier()
+	pid := os.Getpid()
+	log.Info().Msgf("[%d] PID: %d", taskID, pid)
 	if taskID == 0 {
 		//incrementor := 0
 		size, err := rootGraph.Graph.Size()
@@ -122,6 +126,14 @@ func main() {
 				return
 			}
 		}
+
+		go func() {
+			for {
+				pid := os.Getpid()
+				log.Info().Msgf("[%d] PID: %d", taskID, pid)
+				time.Sleep(5 * time.Second)
+			}
+		}()
 
 		// I.5 root process will listen for incoming requests
 		go func() {
@@ -183,6 +195,14 @@ func main() {
 			//os.Exit(0)
 		}(&wg)
 
+		go func() {
+			for {
+				pid := os.Getpid()
+				log.Info().Msgf("[%d] PID: %d", taskID, pid)
+				time.Sleep(5 * time.Second)
+			}
+		}()
+
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
@@ -240,15 +260,20 @@ func ListenForReceiveAndSendRequest(err error, m *streets.MPI, lookupTable map[i
 }
 
 func ListenForLengthRequest(err error, m *streets.MPI) (error, bool) {
+	//for i := 1; i < mpi.WorldSize(); i++ {
+	//	go func(fromID int) {
 	for {
 		// I.5.a root process will listen for incoming requests for edge length
-		// TODO: make async
 		err = m.RespondToEdgeLengthRequest()
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to respond to edge length request")
-			return nil, true
+			panic(err)
+			//return nil, true
 		}
 	}
+	//	}(i)
+	//}
+	//select {}
 }
 
 func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI, wg *sync.WaitGroup) bool {
@@ -261,7 +286,7 @@ func driveVehicle(vehicleOnLeaf streets.Vehicle, taskID int, m *streets.MPI, wg 
 
 	for {
 		if vehicleOnLeaf.IsParked { // II.7.1
-			log.Info().Msgf("[%d] Vehicle %s is parked", taskID, vehicleOnLeaf.ID) // II.10
+			log.Info().Msgf("[%d]-II.10 Vehicle %s is parked", taskID, vehicleOnLeaf.ID) // II.10
 			//m.SendDoneToRoot()
 			log.Debug().Msgf("[%d] Sent done to root", taskID)
 			return false

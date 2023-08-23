@@ -13,7 +13,6 @@ func UnmarshalVehicle(data []byte) (Vehicle, error) {
 
 	err := dec.Decode(&r)
 
-	//err := json.Unmarshal(data, &r)
 	return Vehicle{
 		ID:                r.ID,
 		PathIDs:           r.PathIDs,

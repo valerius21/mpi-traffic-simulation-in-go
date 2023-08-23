@@ -1,17 +1,28 @@
 package streets
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 )
 
 func UnmarshalEdgePackage(data []byte) (EdgePackage, error) {
 	var r EdgePackage
-	err := json.Unmarshal(data, &r)
+	byteBuffer := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(byteBuffer)
+
+	err := dec.Decode(&r)
+
 	return r, err
 }
 
 func (r *EdgePackage) Marshal() ([]byte, error) {
-	return json.Marshal(r)
+	tmp := *r
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+
+	err := enc.Encode(tmp)
+	return buf.Bytes(), err
 }
 
 type EdgePackage struct {

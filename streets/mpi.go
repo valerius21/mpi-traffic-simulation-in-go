@@ -47,12 +47,21 @@ func (m *MPI) AskRootForEdgeLength(srcVertexID, destVertexID int) (float64, erro
 
 	log.Info().Msgf("[%d] sending edge package len(%d)", m.taskID, len(edgePackage))
 	// send request to root
-	log.Debug().Msgf("[%d] sending edge %d->%d to root", m.taskID, srcVertexID, destVertexID)
-	m.comm.SendInt64s([]int64{int64(srcVertexID), int64(destVertexID)}, ROOT_ID, REQUEST_EDGE)
+	log.Debug().Msgf("[%d] sending edge %d->%d to root", m.taskID, e.Src, e.Dest)
+	m.comm.SendBytes(edgePackage, ROOT_ID, REQUEST_EDGE)
 
 	log.Info().Msgf("[%d] waiting to get edge package from root", m.taskID)
 	// receive edge length from root
-	length, _ := m.comm.RecvFloat64(ROOT_ID, RECEIVE_EDGE)
+	//TODO: length, _ := m.comm.RecvFloat64(ROOT_ID, RECEIVE_EDGE)
+	bytes, status := m.comm.RecvBytes(ROOT_ID, RECEIVE_EDGE)
+	log.Info().Msgf("[%d] received edge package from %d", m.taskID, status.GetSource())
+	lf, err := UnmarshalLengthFloat(bytes)
+	if err != nil {
+		log.Error().Msgf("failed to unmarshal length float: %s", err.Error())
+		return 0, errors.New("failed to unmarshal length float")
+	}
+
+	length := lf.Length
 
 	if length <= 0.0 {
 		return 0, errors.New("failed to pack edge package")
@@ -62,26 +71,25 @@ func (m *MPI) AskRootForEdgeLength(srcVertexID, destVertexID int) (float64, erro
 }
 
 func (m *MPI) RespondToEdgeLengthRequest() error {
+	log.Info().Msgf("[%d] waiting for edge package - %d", m.taskID)
 	if m.taskID != ROOT_ID {
 		return errors.New("process is not root")
 	}
 
 	log.Info().Msg("[root] waiting for edge package")
-	intArr, status := m.comm.RecvInt64s(mpi.AnySource, REQUEST_EDGE)
-	//jBytes, status := m.comm.RecvBytes(mpi.AnySource, REQUEST_EDGE)
-	log.Info().Msgf("[root] received edge package from %d len(%d)", status.GetSource(), len(intArr))
-	if intArr == nil || len(intArr) != 2 {
-		return errors.New("failed to receive edge package")
-	}
-	////edgePackage, err := UnmarshalEdgePackage(jBytes)
-	//if err != nil {
-	//	return errors.New("failed to unmarshal edge package")
-	//}
 
-	src := int(intArr[0])
-	dest := int(intArr[1])
-	log.Debug().Msgf("[root] received edge package from %d src(%d) dest(%d)", status.GetSource(), src, dest)
-	edge, err := m.g.Graph.Edge(src, dest)
+	bytes, status := m.comm.RecvBytes(2, REQUEST_EDGE) // FIXME: MPI.ANY_SOURCE
+	edgePackage, err := UnmarshalEdgePackage(bytes)
+
+	log.Info().Msgf("[root] received edge package from %d", status.GetSource())
+
+	if err != nil {
+		return errors.New("failed to unmarshal edge package")
+	}
+
+	log.Debug().Msgf("[root] received edge package from %d src(%d) dest(%d)", status.GetSource(), edgePackage.Src,
+		edgePackage.Dest)
+	edge, err := m.g.Graph.Edge(edgePackage.Src, edgePackage.Dest)
 
 	if err != nil {
 		log.Error().Msgf("failed to get edge: %s", err.Error())
@@ -94,8 +102,15 @@ func (m *MPI) RespondToEdgeLengthRequest() error {
 	}
 
 	log.Info().Msgf("[root] sending edge package %f", data.Length)
+
 	// send edge length to sender
-	m.comm.SendFloat64(data.Length, status.GetSource(), RECEIVE_EDGE)
+	lf := LengthFloat{Length: data.Length}
+	lfBytes, err := lf.Marshal()
+	if err != nil {
+		log.Error().Msgf("failed to marshal length float: %s", err.Error())
+		return errors.New("failed to pack length float")
+	}
+	m.comm.SendBytes(lfBytes, status.GetSource(), RECEIVE_EDGE)
 
 	return nil
 }
