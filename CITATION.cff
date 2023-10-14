@@ -1,10 +1,14 @@
-cff-version: 1.0.0
-message: If you reference this repository or its software, please cite it as below.
-title: MPI Traffic Simulation in Go
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "MPI Traffic Simulation in Go"
 authors:
-  - name: Valerius Mattfeld <mail@valerius.me>
-  - name: Bianca Vetter <bianca.vetter@stud.uni-goettingen.de>
+  - family-names: "Mattfeld"
+    given-names: "Valerius"
+    orcid: ""
+  - family-names: "Vetter"
+    given-names: "Bianca"
+    orcid: ""
 version: 1.0
-url: https://github.com/valerius21/pchpc_next_go
+doi: ""
 date-released: 2023-10-14
-repository-code:https://github.com/valerius21/pchpc_next_go
+url: "https://github.com/valerius21/pchpc_next_go"
